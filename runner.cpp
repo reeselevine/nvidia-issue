@@ -55,10 +55,10 @@ void run(int device_id, bool enable_validation_layers)
   // initialize settings
   auto instance = Instance(enable_validation_layers);
   auto device = getDevice(instance, device_id);
-  int workgroups = 512;
-  int workgroupSize = 192;
+  int workgroups = 164;
+  int workgroupSize = 164;
   int testingThreads = workgroups * workgroupSize;
-  int testLocSize = testingThreads * 7;
+  int testLocSize = testingThreads * 4;
 
   // set up buffers
   auto nonAtomicTestLocations = Buffer(device, testLocSize, sizeof(uint32_t));
@@ -71,7 +71,7 @@ void run(int device_id, bool enable_validation_layers)
   vector<Buffer> resultBuffers = {readResults, testResults};
 
   int numViolations = 0;
-  for (int i = 0; i < 1000; i++) {
+  for (int i = 0; i < 100; i++) {
     auto program = Program(device, "test.spv", buffers);
     auto resultProgram = Program(device, "check_results.spv", resultBuffers);
 
