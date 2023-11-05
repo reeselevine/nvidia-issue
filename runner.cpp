@@ -55,8 +55,8 @@ void run(int device_id, bool enable_validation_layers)
   // initialize settings
   auto instance = Instance(enable_validation_layers);
   auto device = getDevice(instance, device_id);
-  int workgroups = 164;
-  int workgroupSize = 164;
+  int workgroups = 128;
+  int workgroupSize = 128;
   int testingThreads = workgroups * workgroupSize;
   int testLocSize = testingThreads * 4;
 
