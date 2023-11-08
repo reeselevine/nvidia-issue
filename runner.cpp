@@ -157,7 +157,7 @@ int setBetween(int min, int max) {
   }
 }
 
-/** A test consists of N iterations of a shader and its corresponding result shader. */
+/** A test consists of N iterations of a shader. */
 void run(int device_id, bool enable_validation_layers)
 {
   // initialize settings
@@ -168,16 +168,12 @@ void run(int device_id, bool enable_validation_layers)
 
   // set up buffers
   vector<Buffer> buffers;
-  vector<Buffer> resultBuffers;
   auto nonAtomicTestLocations = Buffer(device, testLocSize, sizeof(uint32_t));
   buffers.push_back(nonAtomicTestLocations);
   auto atomicTestLocations = Buffer(device, testLocSize, sizeof(uint32_t));
   buffers.push_back(atomicTestLocations);
-  auto readResults = Buffer(device, NUM_OUTPUTS * testingThreads, sizeof(uint32_t));
-  buffers.push_back(readResults);
-  resultBuffers.push_back(readResults);
   auto testResults = Buffer(device, NUM_RESULTS, sizeof(uint32_t));
-  resultBuffers.push_back(testResults);
+  buffers.push_back(testResults);
   auto shuffledWorkgroups = Buffer(device, MAX_WORKGROUPS, sizeof(uint32_t));
   buffers.push_back(shuffledWorkgroups);
   auto barrier = Buffer(device, 1, sizeof(uint32_t));
@@ -189,7 +185,6 @@ void run(int device_id, bool enable_validation_layers)
   auto stressParams = Buffer(device, 11, sizeof(uint32_t));
   setStaticStressParams(stressParams);
   buffers.push_back(stressParams);
-  resultBuffers.push_back(stressParams);
 
 
   // run iterations
@@ -198,7 +193,6 @@ void run(int device_id, bool enable_validation_layers)
   int numViolations = 0;
   for (int i = 0; i < TEST_ITERATIONS; i++) {
     auto program = Program(device, "test.spv", buffers);
-    auto resultProgram = Program(device, "results.spv", resultBuffers);
 
     int numWorkgroups = setBetween(TESTING_WORKGROUPS, MAX_WORKGROUPS);
     clearMemory(nonAtomicTestLocations, testLocSize);
@@ -211,15 +205,10 @@ void run(int device_id, bool enable_validation_layers)
     setDynamicStressParams(stressParams);
 
     program.setWorkgroups(numWorkgroups);
-    resultProgram.setWorkgroups(TESTING_WORKGROUPS);
     program.setWorkgroupSize(WORKGROUP_SIZE);
-    resultProgram.setWorkgroupSize(WORKGROUP_SIZE);
 
     program.initialize("run_test");
     program.run();
-    resultProgram.initialize("check_results");
-    resultProgram.run();
-
 
     cout << "Iteration " << i << "\n";
     vector<uint32_t> results;
@@ -238,7 +227,6 @@ void run(int device_id, bool enable_validation_layers)
     numViolations += results[6] + results[7] + results[8];
 
     program.teardown();
-    resultProgram.teardown();
   }
 
   cout << "Number of violations: " << numViolations << "\n";
@@ -246,7 +234,6 @@ void run(int device_id, bool enable_validation_layers)
   for (Buffer buffer : buffers) {
     buffer.teardown();
   }
-  testResults.teardown();
   device.teardown();
   instance.teardown();
 }

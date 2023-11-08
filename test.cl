@@ -1,3 +1,15 @@
+typedef struct TestResults {
+  atomic_uint seq0;
+  atomic_uint seq1;
+  atomic_uint interleaved0;
+  atomic_uint interleaved1;
+  atomic_uint racy0;
+  atomic_uint racy1;
+  atomic_uint not_bound0;
+  atomic_uint not_bound1;
+  atomic_uint other;
+} TestResults;
+
 static uint permute_id(uint id, uint factor, uint mask) {
   return (id * factor) % mask;
 }
@@ -48,7 +60,7 @@ static void do_stress(__global uint* scratchpad, __global uint* scratch_location
 __kernel void run_test (
   __global uint* non_atomic_test_locations,
   __global atomic_uint* atomic_test_locations,
-  __global atomic_uint* read_results,
+  __global TestResults* test_results,
   __global uint* shuffled_workgroups,
   __global atomic_uint* _barrier,
   __global uint* scratchpad,
@@ -83,10 +95,25 @@ __kernel void run_test (
     uint r0 = non_atomic_test_locations[x_1];
     uint r1 = non_atomic_test_locations[y_1]; 
 
-    // Store back results for analysis
-    atomic_store(&read_results[id_1 * 3], flag);
-    atomic_store(&read_results[id_1 * 3 + 1], r0);
-    atomic_store(&read_results[id_1 * 3 + 2], r1);
+    if (flag == 1 && r0 == 2 && r1 == 2) {
+      atomic_fetch_add(&test_results->seq0, 1);
+    } else if (flag == 0 && r0 == 2 && r1 == 2) {
+      atomic_fetch_add(&test_results->seq1, 1);
+    } else if (flag == 1 && r0 == 1 & r1 == 1) {
+      atomic_fetch_add(&test_results->interleaved0, 1);
+    } else if (flag == 0 && r0 == 1 & r1 == 1) {
+      atomic_fetch_add(&test_results->interleaved1, 1);
+    } else if (flag == 0 && r0 == 2 & r1 == 1) {
+      atomic_fetch_add(&test_results->racy0, 1);
+    } else if (flag == 0 && r0 == 1 & r1 == 2) {
+      atomic_fetch_add(&test_results->racy1, 1);
+    } else if (flag == 1 && r0 == 2 & r1 == 1) {
+      atomic_fetch_add(&test_results->not_bound0, 1);
+    } else if (flag == 1 && r0 == 1 & r1 == 2) {
+      atomic_fetch_add(&test_results->not_bound1, 1);
+    } else {
+      atomic_fetch_add(&test_results->other, 1);
+    }
   } else if (stress_params[1]) {
     do_stress(scratchpad, scratch_locations, stress_params[2], stress_params[3]);
   }
