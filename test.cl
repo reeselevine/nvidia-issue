@@ -10,6 +10,12 @@ typedef struct TestResults {
   atomic_uint other;
 } TestResults;
 
+typedef struct Params {
+  uint testing_workgroups;
+  uint permute_id;
+  uint mem_stride;
+} Params;
+
 static uint permute_id(uint id, uint factor, uint mask) {
   return (id * factor) % mask;
 }
@@ -23,16 +29,16 @@ __kernel void run_test (
   __global atomic_uint* atomic_test_locations,
   __global TestResults* test_results,
   __global uint* shuffled_workgroups,
-  __global uint* stress_params) {
+  __global Params* params) {
   uint shuffled_workgroup = shuffled_workgroups[get_group_id(0)];
-  if(shuffled_workgroup < stress_params[9]) {
-    uint total_ids = get_local_size(0) * stress_params[9];
+  if(shuffled_workgroup < params->testing_workgroups) {
+    uint total_ids = get_local_size(0) * params->testing_workgroups;
     uint id_0 = shuffled_workgroup * get_local_size(0) + get_local_id(0);
-    uint new_workgroup = stripe_workgroup(shuffled_workgroup, get_local_id(0), stress_params[9]);
-    uint id_1 = new_workgroup * get_local_size(0) + permute_id(get_local_id(0), stress_params[7], get_local_size(0));
-    uint x_0 = (id_0) * stress_params[10]; // used to write to the racy location and write the flag (thread 0)
-    uint x_1 = (id_1) * stress_params[10]; // used to write to the racy location, read the flag, first read of racy location (thread 1)
-    uint y_1 = (permute_id(id_1, 1, total_ids)) * stress_params[10]; // aliased second read of racy location (thread 1)
+    uint new_workgroup = stripe_workgroup(shuffled_workgroup, get_local_id(0), params->testing_workgroups);
+    uint id_1 = new_workgroup * get_local_size(0) + permute_id(get_local_id(0), params->permute_id, get_local_size(0));
+    uint x_0 = (id_0) * params->mem_stride; // used to write to the racy location and write the flag (thread 0)
+    uint x_1 = (id_1) * params->mem_stride; // used to write to the racy location, read the flag, first read of racy location (thread 1)
+    uint y_1 = (permute_id(id_1, 1, total_ids)) * params->mem_stride; // aliased second read of racy location (thread 1)
     // Thread 0
     non_atomic_test_locations[x_0] = 1;
     atomic_store_explicit(&atomic_test_locations[x_0], 1, memory_order_release);
