@@ -12,7 +12,8 @@ typedef struct TestResults {
 
 __kernel void check_results (
   __global atomic_uint* read_results,
-  __global TestResults* test_results) {
+  __global TestResults* test_results,
+  __global uint* stress_params) {
   uint id_0 = get_global_id(0);
   uint flag = atomic_load(&read_results[id_0 * 3]); // flag
   uint r0 = atomic_load(&read_results[id_0 * 3 + 1]); // first read

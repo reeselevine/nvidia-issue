@@ -1,15 +1,38 @@
+#include <map>
+#include <set>
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <fstream>
-#include <random>
 #include <chrono>
 #include <easyvk.h>
 #include <unistd.h>
-#include <algorithm>
 
 using namespace std;
 using namespace easyvk;
+
+const int TEST_ITERATIONS = 100;
+const int TESTING_WORKGROUPS = 164;
+const int MAX_WORKGROUPS = 988;
+const int WORKGROUP_SIZE = 185;
+const int SHUFFLE_PCT = 82;
+const int BARRIER_PCT = 89;
+const int STRESS_LINE_SIZE = 49;
+const int STRESS_TARGET_LINES = 2;
+const int SCRATCH_MEMORY_SIZE = 3136;
+const int MEM_STRIDE = 7;
+const int MEM_STRESS_PCT = 83;
+const int MEM_STRESS_ITERATIONS = 800;
+const int MEM_STRESS_PATTERN = 1;
+const int PRE_STRESS_PCT = 86;
+const int PRE_STRESS_ITERATIONS = 112;
+const int PRE_STRESS_PATTERN = 3;
+const int STRESS_ASSIGNMENT_STRATEGY = 0;
+const int PERMUTE_THREAD = 419;
+
+const int NUM_OUTPUTS = 3;
+const int NUM_RESULTS = 9;
+const int PERMUTE_LOCATION = 1;
 
 /** Returns the GPU to use for this test run. Users can specify the specific GPU to use
  *  with the a device index parameter. If the index is too large, an error is returned.
@@ -37,15 +60,100 @@ void clearMemory(Buffer &gpuMem, int size) {
   }
 }
 
-void setShuffledLocations(Buffer &shuffledLocations, int testingThreads) {
-  vector<uint> locs;
-  for (int i = 0; i < testingThreads; i++) {
-    locs.push_back(i);
+/** Checks whether a random value is less than a given percentage. Used for parameters like memory stress that should only
+ *  apply some percentage of iterations.
+ */
+bool percentageCheck(int percentage) {
+  return rand() % 100 < percentage;
+}
+
+/** Assigns shuffled workgroup ids, using the shufflePct to determine whether the ids should be shuffled this iteration. */
+void setShuffledWorkgroups(Buffer &shuffledWorkgroups, int numWorkgroups, int shufflePct) {
+  for (int i = 0; i < numWorkgroups; i++) {
+    shuffledWorkgroups.store<uint32_t>(i, i);
   }
-  unsigned seed = chrono::system_clock::now().time_since_epoch().count();
-  shuffle(locs.begin(), locs.end(), default_random_engine(seed));
-  for (int i = 0; i < testingThreads; i++) {
-      shuffledLocations.store(i, locs[i]);
+  if (percentageCheck(shufflePct)) {
+    for (int i = numWorkgroups - 1; i > 0; i--) {
+      int swap = rand() % (i + 1);
+      int temp = shuffledWorkgroups.load<uint32_t>(i);
+      shuffledWorkgroups.store<uint32_t>(i, shuffledWorkgroups.load<uint32_t>(swap));
+      shuffledWorkgroups.store<uint32_t>(swap, temp);
+    }
+  }
+}
+
+/** Sets the stress regions and the location in each region to be stressed. Uses the stress assignment strategy to assign
+  * workgroups to specific stress locations. Assignment strategy 0 corresponds to a "round-robin" assignment where consecutive
+  * threads access separate scratch locations, while assignment strategy 1 corresponds to a "chunking" assignment where a group
+  * of consecutive threads access the same location.
+  */
+void setScratchLocations(Buffer &locations, int numWorkgroups) {
+  set <int> usedRegions;
+  int numRegions = SCRATCH_MEMORY_SIZE / STRESS_LINE_SIZE;
+  for (int i = 0; i < STRESS_TARGET_LINES; i++) {
+    int region = rand() % numRegions;
+    while(usedRegions.count(region))
+      region = rand() % numRegions;
+    int locInRegion = rand() % STRESS_LINE_SIZE;
+    switch (STRESS_ASSIGNMENT_STRATEGY) {
+      case 0:
+        for (int j = i; j < numWorkgroups; j += STRESS_TARGET_LINES) {
+          locations.store<uint32_t>(j, (region * STRESS_LINE_SIZE) + locInRegion);
+        }
+        break;
+      case 1:
+        int workgroupsPerLocation = numWorkgroups/STRESS_TARGET_LINES;
+        for (int j = 0; j < workgroupsPerLocation; j++) {
+          locations.store<uint32_t>(i*workgroupsPerLocation + j, (region * STRESS_LINE_SIZE) + locInRegion);
+        }
+        if (i == STRESS_TARGET_LINES - 1 && numWorkgroups % STRESS_TARGET_LINES != 0) {
+          for (int j = 0; j < numWorkgroups % STRESS_TARGET_LINES; j++) {
+            locations.store<uint32_t>(numWorkgroups - j - 1, (region * STRESS_LINE_SIZE) + locInRegion);
+          }
+        }
+        break;
+    }
+  }
+}
+
+/** These parameters vary per iteration, based on a given percentage. */
+void setDynamicStressParams(Buffer &stressParams) {
+  if (percentageCheck(BARRIER_PCT)) {
+    stressParams.store<uint32_t>(0, 1);
+  } else {
+    stressParams.store<uint32_t>(0, 0);
+  }  
+  if (percentageCheck(MEM_STRESS_PCT)) {
+    stressParams.store<uint32_t>(1, 1);
+  } else {
+    stressParams.store<uint32_t>(1, 0);
+  }  
+  if (percentageCheck(PRE_STRESS_PCT)) {
+    stressParams.store<uint32_t>(4, 1);
+  } else {
+    stressParams.store<uint32_t>(4, 0);
+  }
+}
+
+/** These parameters are static for all iterations of the test. Aliased memory is used for coherence tests. */
+void setStaticStressParams(Buffer &stressParams) {
+  stressParams.store<uint32_t>(2, MEM_STRESS_ITERATIONS);
+  stressParams.store<uint32_t>(3, MEM_STRESS_PATTERN);
+  stressParams.store<uint32_t>(5, PRE_STRESS_ITERATIONS);
+  stressParams.store<uint32_t>(6, PRE_STRESS_PATTERN);
+  stressParams.store<uint32_t>(7, PERMUTE_THREAD);
+  stressParams.store<uint32_t>(8, PERMUTE_LOCATION);
+  stressParams.store<uint32_t>(9, TESTING_WORKGROUPS);
+  stressParams.store<uint32_t>(10, MEM_STRIDE);
+}
+
+/** Returns a value between the min and max. */
+int setBetween(int min, int max) {
+  if (min == max) {
+    return min;
+  } else {
+    int size = rand() % (max - min);
+    return min + size;
   }
 }
 
@@ -55,49 +163,67 @@ void run(int device_id, bool enable_validation_layers)
   // initialize settings
   auto instance = Instance(enable_validation_layers);
   auto device = getDevice(instance, device_id);
-  int workgroups = 128;
-  int workgroupSize = 128;
-  int testingThreads = workgroups * workgroupSize;
-  int testLocSize = testingThreads * 4;
+  int testingThreads = WORKGROUP_SIZE * TESTING_WORKGROUPS;
+  int testLocSize = testingThreads * MEM_STRIDE;
 
   // set up buffers
+  vector<Buffer> buffers;
+  vector<Buffer> resultBuffers;
   auto nonAtomicTestLocations = Buffer(device, testLocSize, sizeof(uint32_t));
+  buffers.push_back(nonAtomicTestLocations);
   auto atomicTestLocations = Buffer(device, testLocSize, sizeof(uint32_t));
-  auto shuffledLocations = Buffer(device, testingThreads, sizeof(uint32_t));
-  auto readResults = Buffer(device, 3 * testingThreads, sizeof(uint32_t));
-  auto testResults = Buffer(device, 9, sizeof(uint32_t));
+  buffers.push_back(atomicTestLocations);
+  auto readResults = Buffer(device, NUM_OUTPUTS * testingThreads, sizeof(uint32_t));
+  buffers.push_back(readResults);
+  resultBuffers.push_back(readResults);
+  auto testResults = Buffer(device, NUM_RESULTS, sizeof(uint32_t));
+  resultBuffers.push_back(testResults);
+  auto shuffledWorkgroups = Buffer(device, MAX_WORKGROUPS, sizeof(uint32_t));
+  buffers.push_back(shuffledWorkgroups);
+  auto barrier = Buffer(device, 1, sizeof(uint32_t));
+  buffers.push_back(barrier);
+  auto scratchpad = Buffer(device, SCRATCH_MEMORY_SIZE, sizeof(uint32_t));
+  buffers.push_back(scratchpad);
+  auto scratchLocations = Buffer(device, MAX_WORKGROUPS, sizeof(uint32_t));
+  buffers.push_back(scratchLocations);
+  auto stressParams = Buffer(device, 11, sizeof(uint32_t));
+  setStaticStressParams(stressParams);
+  buffers.push_back(stressParams);
+  resultBuffers.push_back(stressParams);
 
-  vector<Buffer> buffers = {nonAtomicTestLocations, atomicTestLocations, shuffledLocations, readResults};
-  vector<Buffer> resultBuffers = {readResults, testResults};
 
+  // run iterations
+  chrono::time_point<std::chrono::system_clock> start, end;
+  start = chrono::system_clock::now();
   int numViolations = 0;
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < TEST_ITERATIONS; i++) {
     auto program = Program(device, "test.spv", buffers);
-    auto resultProgram = Program(device, "check_results.spv", resultBuffers);
+    auto resultProgram = Program(device, "results.spv", resultBuffers);
 
+    int numWorkgroups = setBetween(TESTING_WORKGROUPS, MAX_WORKGROUPS);
     clearMemory(nonAtomicTestLocations, testLocSize);
     clearMemory(atomicTestLocations, testLocSize);
-    setShuffledLocations(shuffledLocations, testingThreads);
-    clearMemory(testResults, 9);
+    clearMemory(testResults, NUM_RESULTS);
+    clearMemory(barrier, 1);
+    clearMemory(scratchpad, SCRATCH_MEMORY_SIZE);
+    setShuffledWorkgroups(shuffledWorkgroups, numWorkgroups, SHUFFLE_PCT);
+    setScratchLocations(scratchLocations, numWorkgroups);
+    setDynamicStressParams(stressParams);
 
-    program.setWorkgroups(workgroups);
-    resultProgram.setWorkgroups(workgroups);
-    program.setWorkgroupSize(workgroupSize);
-    resultProgram.setWorkgroupSize(workgroupSize);
+    program.setWorkgroups(numWorkgroups);
+    resultProgram.setWorkgroups(TESTING_WORKGROUPS);
+    program.setWorkgroupSize(WORKGROUP_SIZE);
+    resultProgram.setWorkgroupSize(WORKGROUP_SIZE);
 
     program.initialize("run_test");
-//    cout << "Running program\n";
     program.run();
-//    cout << "Done running program\n";
     resultProgram.initialize("check_results");
-//    cout << "Running results\n";
     resultProgram.run();
-//    cout << "Done running results\n";
 
 
     cout << "Iteration " << i << "\n";
     vector<uint32_t> results;
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < NUM_RESULTS; i++) {
       results.push_back(testResults.load<uint32_t>(i));
     }
     cout << "flag=1, r0=2, r1=2 (seq): " << results[0] << "\n";
@@ -117,9 +243,9 @@ void run(int device_id, bool enable_validation_layers)
 
   cout << "Number of violations: " << numViolations << "\n";
 
-  nonAtomicTestLocations.teardown();
-  atomicTestLocations.teardown();
-  readResults.teardown();
+  for (Buffer buffer : buffers) {
+    buffer.teardown();
+  }
   testResults.teardown();
   device.teardown();
   instance.teardown();
@@ -146,10 +272,7 @@ int main(int argc, char *argv[])
       deviceIndex = atoi(optarg);
       break;
     case '?':
-      if (optopt == 'd')
-        std::cerr << "Option -" << optopt << "requires an argument\n";
-      else
-        std::cerr << "Unknown option" << optopt << "\n";
+      std::cerr << "Unknown option" << optopt << "\n";
       return 1;
     default:
       abort();
