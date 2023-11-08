@@ -91,8 +91,6 @@ void run(int device_id, bool enable_validation_layers)
   buffers.push_back(stressParams);
 
   // run iterations
-  chrono::time_point<std::chrono::system_clock> start, end;
-  start = chrono::system_clock::now();
   int numViolations = 0;
   for (int i = 0; i < TEST_ITERATIONS; i++) {
     auto program = Program(device, "test.spv", buffers);
@@ -109,20 +107,16 @@ void run(int device_id, bool enable_validation_layers)
     program.run();
 
     cout << "Iteration " << i << "\n";
-    vector<uint32_t> results;
-    for (int i = 0; i < NUM_RESULTS; i++) {
-      results.push_back(testResults.load<uint32_t>(i));
-    }
-    cout << "flag=1, r0=2, r1=2 (seq): " << results[0] << "\n";
-    cout << "flag=0, r0=2, r1=2 (seq): " << results[1] << "\n";
-    cout << "flag=1, r0=1, r1=1 (interleaved): " << results[2] << "\n";
-    cout << "flag=0, r0=1, r1=1 (interleaved): " << results[3] << "\n";
-    cout << "flag=0, r0=2, r1=1 (racy): " << results[4] << "\n";
-    cout << "flag=0, r0=1, r1=2 (racy): " << results[5] << "\n";
-    cout << "flag=1, r0=2, r1=1 (not bound): " << results[6] << "\n";
-    cout << "flag=1, r0=1, r1=2 (not bound): " << results[7] << "\n";
-    cout << "Other/error: " << results[8] << "\n\n";
-    numViolations += results[6] + results[7] + results[8];
+    cout << "flag=1, r0=2, r1=2 (seq): " << testResults.load<uint32_t>(0) << "\n";
+    cout << "flag=0, r0=2, r1=2 (seq): " << testResults.load<uint32_t>(1) << "\n";
+    cout << "flag=1, r0=1, r1=1 (interleaved): " << testResults.load<uint32_t>(2) << "\n";
+    cout << "flag=0, r0=1, r1=1 (interleaved): " << testResults.load<uint32_t>(3) << "\n";
+    cout << "flag=0, r0=2, r1=1 (racy): " << testResults.load<uint32_t>(4) << "\n";
+    cout << "flag=0, r0=1, r1=2 (racy): " << testResults.load<uint32_t>(5) << "\n";
+    cout << "flag=1, r0=2, r1=1 (not bound): " << testResults.load<uint32_t>(6) << "\n";
+    cout << "flag=1, r0=1, r1=2 (not bound): " << testResults.load<uint32_t>(7) << "\n";
+    cout << "Other/error: " << testResults.load<uint32_t>(8) << "\n\n";
+    numViolations += testResults.load<uint32_t>(6) + testResults.load<uint32_t>(7) + testResults.load<uint32_t>(8);
 
     program.teardown();
   }
