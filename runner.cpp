@@ -17,9 +17,6 @@ const int MAX_WORKGROUPS = 988;
 const int WORKGROUP_SIZE = 185;
 const int SHUFFLE_PCT = 82;
 const int BARRIER_PCT = 89;
-const int STRESS_LINE_SIZE = 49;
-const int STRESS_TARGET_LINES = 2;
-const int SCRATCH_MEMORY_SIZE = 3136;
 const int MEM_STRIDE = 7;
 const int MEM_STRESS_PCT = 83;
 const int MEM_STRESS_ITERATIONS = 800;
@@ -78,40 +75,6 @@ void setShuffledWorkgroups(Buffer &shuffledWorkgroups, int numWorkgroups, int sh
       int temp = shuffledWorkgroups.load<uint32_t>(i);
       shuffledWorkgroups.store<uint32_t>(i, shuffledWorkgroups.load<uint32_t>(swap));
       shuffledWorkgroups.store<uint32_t>(swap, temp);
-    }
-  }
-}
-
-/** Sets the stress regions and the location in each region to be stressed. Uses the stress assignment strategy to assign
-  * workgroups to specific stress locations. Assignment strategy 0 corresponds to a "round-robin" assignment where consecutive
-  * threads access separate scratch locations, while assignment strategy 1 corresponds to a "chunking" assignment where a group
-  * of consecutive threads access the same location.
-  */
-void setScratchLocations(Buffer &locations, int numWorkgroups) {
-  set <int> usedRegions;
-  int numRegions = SCRATCH_MEMORY_SIZE / STRESS_LINE_SIZE;
-  for (int i = 0; i < STRESS_TARGET_LINES; i++) {
-    int region = rand() % numRegions;
-    while(usedRegions.count(region))
-      region = rand() % numRegions;
-    int locInRegion = rand() % STRESS_LINE_SIZE;
-    switch (STRESS_ASSIGNMENT_STRATEGY) {
-      case 0:
-        for (int j = i; j < numWorkgroups; j += STRESS_TARGET_LINES) {
-          locations.store<uint32_t>(j, (region * STRESS_LINE_SIZE) + locInRegion);
-        }
-        break;
-      case 1:
-        int workgroupsPerLocation = numWorkgroups/STRESS_TARGET_LINES;
-        for (int j = 0; j < workgroupsPerLocation; j++) {
-          locations.store<uint32_t>(i*workgroupsPerLocation + j, (region * STRESS_LINE_SIZE) + locInRegion);
-        }
-        if (i == STRESS_TARGET_LINES - 1 && numWorkgroups % STRESS_TARGET_LINES != 0) {
-          for (int j = 0; j < numWorkgroups % STRESS_TARGET_LINES; j++) {
-            locations.store<uint32_t>(numWorkgroups - j - 1, (region * STRESS_LINE_SIZE) + locInRegion);
-          }
-        }
-        break;
     }
   }
 }
@@ -176,12 +139,6 @@ void run(int device_id, bool enable_validation_layers)
   buffers.push_back(testResults);
   auto shuffledWorkgroups = Buffer(device, MAX_WORKGROUPS, sizeof(uint32_t));
   buffers.push_back(shuffledWorkgroups);
-  auto barrier = Buffer(device, 1, sizeof(uint32_t));
-  buffers.push_back(barrier);
-  auto scratchpad = Buffer(device, SCRATCH_MEMORY_SIZE, sizeof(uint32_t));
-  buffers.push_back(scratchpad);
-  auto scratchLocations = Buffer(device, MAX_WORKGROUPS, sizeof(uint32_t));
-  buffers.push_back(scratchLocations);
   auto stressParams = Buffer(device, 11, sizeof(uint32_t));
   setStaticStressParams(stressParams);
   buffers.push_back(stressParams);
@@ -198,10 +155,7 @@ void run(int device_id, bool enable_validation_layers)
     clearMemory(nonAtomicTestLocations, testLocSize);
     clearMemory(atomicTestLocations, testLocSize);
     clearMemory(testResults, NUM_RESULTS);
-    clearMemory(barrier, 1);
-    clearMemory(scratchpad, SCRATCH_MEMORY_SIZE);
     setShuffledWorkgroups(shuffledWorkgroups, numWorkgroups, SHUFFLE_PCT);
-    setScratchLocations(scratchLocations, numWorkgroups);
     setDynamicStressParams(stressParams);
 
     program.setWorkgroups(numWorkgroups);
