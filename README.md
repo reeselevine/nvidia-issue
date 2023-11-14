@@ -22,7 +22,7 @@ Note that violations are _not_ a bug; the data race on `a` technically makes thi
 
 ## Test Format
 
-Unsurprisingly, the violation does not reproduce in a simple, two-thread test. Therefore, this program utilizes techniques from our research on memory model litmus testing to increase stress on the system. Specifically, observing the violation seems to require two techniques:
+We run the test using `device` memory, using `acquire/release` fences with a device scope. Threads on either side of the test may or may not be part of the same workgroup, but the majority are not in the same workgroup. Unsurprisingly, the violation does not reproduce in a simple, two-thread test. Therefore, this program utilizes techniques from our research on memory model litmus testing to increase stress on the system. Specifically, observing the violation seems to require two techniques:
 
 1.) A parallel test strategy, as described in [MC Mutants](https://dl.acm.org/doi/10.1145/3575693.3575750), with 15-20% of dispatched workgroups dedicated to testing.
 
