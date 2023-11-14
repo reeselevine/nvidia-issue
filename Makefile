@@ -6,7 +6,7 @@ SHADERS = $(patsubst %.cl,%.spv,$(wildcard *.cl))
 
 .PHONY: clean easyvk 
 
-all: build easyvk runner $(SHADERS)
+all: build easyvk runner
 
 build:
 	mkdir -p build
@@ -17,9 +17,9 @@ clean:
 easyvk: ../easyvk/src/easyvk.cpp ../easyvk/src/easyvk.h
 	$(CXX) $(CXXFLAGS) -I../easyvk/src -c ../easyvk/src/easyvk.cpp -o build/easyvk.o
 
-runner: runner.cpp 
+runner: runner.cpp copy-spv
 	$(CXX) $(CXXFLAGS) -I../easyvk/src build/easyvk.o runner.cpp -lvulkan -o build/runner
 
-%.spv: %.cl
-	clspv -w -cl-std=CL2.0 -inline-entry-points $< -o build/$@
+copy-spv:
+	cp test.spv build
 
