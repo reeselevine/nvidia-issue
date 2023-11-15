@@ -107,16 +107,16 @@ void run(int device_id, bool enable_validation_layers)
     program.run();
 
     cout << "Iteration " << i << "\n";
-    cout << "flag=1, r0=2, r1=2 (seq): " << testResults.load<uint32_t>(0) << "\n";
-    cout << "flag=0, r0=2, r1=2 (seq): " << testResults.load<uint32_t>(1) << "\n";
-    cout << "flag=1, r0=1, r1=1 (interleaved): " << testResults.load<uint32_t>(2) << "\n";
-    cout << "flag=0, r0=1, r1=1 (interleaved): " << testResults.load<uint32_t>(3) << "\n";
-    cout << "flag=0, r0=2, r1=1 (racy): " << testResults.load<uint32_t>(4) << "\n";
-    cout << "flag=0, r0=1, r1=2 (racy): " << testResults.load<uint32_t>(5) << "\n";
-    cout << "flag=1, r0=2, r1=1 (not bound): " << testResults.load<uint32_t>(6) << "\n";
-    cout << "flag=1, r0=1, r1=2 (not bound): " << testResults.load<uint32_t>(7) << "\n";
+    cout << "flag=1, r0=1, r1=1 (seq): " << testResults.load<uint32_t>(0) << "\n";
+    cout << "flag=0, r0=0, r1=0 (seq): " << testResults.load<uint32_t>(1) << "\n";
+    cout << "flag=0, r0=1, r1=1 (interleaved): " << testResults.load<uint32_t>(2) << "\n";
+    cout << "flag=0, r0=0, r1=1 (interleaved): " << testResults.load<uint32_t>(3) << "\n";
+    cout << "flag=0, r0=1, r1=0 (racy): " << testResults.load<uint32_t>(4) << "\n";
+    cout << "flag=1, r0=0, r1=0 (not bound): " << testResults.load<uint32_t>(5) << "\n";
+    cout << "flag=1, r0=0, r1=1 (not bound): " << testResults.load<uint32_t>(6) << "\n";
+    cout << "flag=1, r0=1, r1=0 (not bound): " << testResults.load<uint32_t>(7) << "\n";
     cout << "Other/error: " << testResults.load<uint32_t>(8) << "\n\n";
-    numViolations += testResults.load<uint32_t>(6) + testResults.load<uint32_t>(7) + testResults.load<uint32_t>(8);
+    numViolations += testResults.load<uint32_t>(5) + testResults.load<uint32_t>(6) + testResults.load<uint32_t>(7) + testResults.load<uint32_t>(8);
 
     program.teardown();
   }

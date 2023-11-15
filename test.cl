@@ -4,9 +4,9 @@ typedef struct TestResults {
   atomic_uint interleaved0;
   atomic_uint interleaved1;
   atomic_uint racy0;
-  atomic_uint racy1;
   atomic_uint not_bound0;
   atomic_uint not_bound1;
+  atomic_uint not_bound2;
   atomic_uint other;
 } TestResults;
 
@@ -44,7 +44,6 @@ __kernel void run_test (
     atomic_store_explicit(&atomic_test_locations[x_0], 1, memory_order_release);
 
     // Thread 1
-    non_atomic_test_locations[x_1] = 2;
     uint flag = atomic_load_explicit(&atomic_test_locations[x_1], memory_order_acquire);
     while (flag == 0) {
       flag =  atomic_load_explicit(&atomic_test_locations[x_1], memory_order_acquire);
@@ -53,22 +52,22 @@ __kernel void run_test (
     uint r0 = non_atomic_test_locations[x_1];
     uint r1 = non_atomic_test_locations[y_1]; 
 
-    if (flag == 1 && r0 == 2 && r1 == 2) {
+    if (flag == 1 && r0 == 1 && r1 == 1) {
       atomic_fetch_add(&test_results->seq0, 1);
-    } else if (flag == 0 && r0 == 2 && r1 == 2) {
+    } else if (flag == 0 && r0 == 0 && r1 == 0) {
       atomic_fetch_add(&test_results->seq1, 1);
-    } else if (flag == 1 && r0 == 1 & r1 == 1) {
-      atomic_fetch_add(&test_results->interleaved0, 1);
     } else if (flag == 0 && r0 == 1 & r1 == 1) {
+      atomic_fetch_add(&test_results->interleaved0, 1);
+    } else if (flag == 0 && r0 == 0 & r1 == 1) {
       atomic_fetch_add(&test_results->interleaved1, 1);
-    } else if (flag == 0 && r0 == 2 & r1 == 1) {
+    } else if (flag == 0 && r0 == 1 & r1 == 0) {
       atomic_fetch_add(&test_results->racy0, 1);
-    } else if (flag == 0 && r0 == 1 & r1 == 2) {
-      atomic_fetch_add(&test_results->racy1, 1);
-    } else if (flag == 1 && r0 == 2 & r1 == 1) {
+    } else if (flag == 1 && r0 == 0 & r1 == 0) {
       atomic_fetch_add(&test_results->not_bound0, 1);
-    } else if (flag == 1 && r0 == 1 & r1 == 2) {
+    } else if (flag == 1 && r0 == 0 & r1 == 1) {
       atomic_fetch_add(&test_results->not_bound1, 1);
+    } else if (flag == 1 && r0 == 1 & r1 == 0) {
+      atomic_fetch_add(&test_results->not_bound2, 1);
     } else {
       atomic_fetch_add(&test_results->other, 1);
     }
