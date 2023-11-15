@@ -25,7 +25,7 @@ static uint stripe_workgroup(uint workgroup_id, uint local_id, uint testing_work
 }
 
 __kernel void run_test (
-  __global uint* non_atomic_test_locations,
+  __global atomic_uint* non_atomic_test_locations,
   __global atomic_uint* atomic_test_locations,
   __global TestResults* test_results,
   __global uint* shuffled_workgroups,
@@ -40,18 +40,18 @@ __kernel void run_test (
     uint x_1 = (id_1) * params->mem_stride; // used to write to the racy location, read the flag, first read of racy location (thread 1)
     uint y_1 = (permute_id(id_1, 1, total_ids)) * params->mem_stride; // aliased second read of racy location (thread 1)
     // Thread 0
-    non_atomic_test_locations[x_0] = 1;
+    atomic_store_explicit(&non_atomic_test_locations[x_0], 1, memory_order_relaxed);
     atomic_store_explicit(&atomic_test_locations[x_0], 1, memory_order_release);
 
     // Thread 1
-    non_atomic_test_locations[x_1] = 2;
+    atomic_store_explicit(&non_atomic_test_locations[x_1], 2, memory_order_relaxed);
     uint flag = atomic_load_explicit(&atomic_test_locations[x_1], memory_order_acquire);
     while (flag == 0) {
-      flag =  atomic_load_explicit(&atomic_test_locations[x_1], memory_order_acquire);
+      flag = atomic_load_explicit(&atomic_test_locations[x_1], memory_order_acquire);
     }
 
-    uint r0 = non_atomic_test_locations[x_1];
-    uint r1 = non_atomic_test_locations[y_1]; 
+    uint r0 = atomic_load_explicit(&non_atomic_test_locations[x_1], memory_order_relaxed);
+    uint r1 = atomic_load_explicit(&non_atomic_test_locations[y_1], memory_order_relaxed);
 
     if (flag == 1 && r0 == 2 && r1 == 2) {
       atomic_fetch_add(&test_results->seq0, 1);
